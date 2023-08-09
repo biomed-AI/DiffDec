@@ -1,0 +1,33 @@
+{
+    "scaffold": [{
+        "name":"ring_count",
+        "min": 1
+    }],
+    "decoration": [
+        {
+        "name":"molecular_weight",
+        "max": 300
+        },
+        {
+        "name":"hydrogen_bond_acceptors",
+        "max": 3
+        },
+        {
+        "name":"hydrogen_bond_donors",
+        "max": 3
+        },
+        {
+        "name":"clogp",
+        "max": 3
+        },
+        {
+        "name":"rotatable_bonds",
+        "max": 3
+        },
+        {
+        "name": "heavy_atom_count",
+        "max": 10,
+        "min": 1
+        }
+    ]
+}
