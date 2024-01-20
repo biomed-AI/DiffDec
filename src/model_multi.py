@@ -134,6 +134,81 @@ class DDPM(pl.LightningModule):
     def test_dataloader(self, collate_fn=collate_mr):
         return get_dataloader(self.test_dataset, self.batch_size, collate_fn=collate_fn)
 
+    def forward(self, data, training):
+        x = data['positions']
+        h = data['one_hot']
+        node_mask = data['atom_mask']
+        edge_mask = data['edge_mask']
+        anchors = data['anchors']
+        scaffold_mask = data['scaffold_mask']
+        rgroup_mask = data['rgroup_mask']
+        pocket_mask = data['pocket_mask']
+        scaffold_only_mask = data['scaffold_only_mask']
+        rgroup_size = data['rgroup_size']
+        anchors_str = data['anchors_str']
+
+        anchors_ = data['anchors_']
+        scaffold_mask_batch_new = data['scaffold_mask_batch_new']
+        scaffold_only_mask_batch_new = data['scaffold_only_mask_batch_new']
+        x_batch_new = data['x_batch_new']
+        h_batch_new = data['h_batch_new']
+        node_mask_batch_new = data['node_mask_batch_new']
+        scaffold_mask_ori_batch_new = data['scaffold_mask_ori_batch_new']
+        rgroup_mask_batch_new = data['rgroup_mask_batch_new']
+        rgroup_mask_ori_batch_new = data['rgroup_mask_ori_batch_new']
+        batch_new_len_tensor = data['batch_new_len_tensor']
+
+        # Anchors and scaffolds labels are used as context
+        if self.anchors_context:
+            context = torch.cat([anchors_, scaffold_mask_batch_new], dim=-1)
+        else:
+            context = scaffold_mask_batch_new
+
+        # Add information about pocket to the context
+        scaffold_pocket_mask = scaffold_mask_batch_new
+        scaffold_only_mask = scaffold_only_mask_batch_new
+        pocket_only_mask = scaffold_pocket_mask - scaffold_only_mask
+        if self.anchors_context:
+            context = torch.cat([anchors_, scaffold_only_mask, pocket_only_mask], dim=-1)
+        else:
+            context = torch.cat([scaffold_only_mask, pocket_only_mask], dim=-1)
+
+        # Removing COM of scaffold from the atom coordinates
+        if self.center_of_mass == 'scaffold':
+            center_of_mass_mask = data['scaffold_only_mask']
+        elif self.center_of_mass == 'scaffold':
+            center_of_mass_mask = scaffold_mask
+        elif self.center_of_mass == 'anchors':
+            center_of_mass_mask = anchors_
+        else:
+            raise NotImplementedError(self.center_of_mass)
+        # x = utils.remove_partial_mean_with_mask(x, node_mask, center_of_mass_mask)
+        # utils.assert_partial_mean_zero_with_mask(x, node_mask, center_of_mass_mask)
+        x_masked = x_batch_new * center_of_mass_mask
+        N = center_of_mass_mask.sum(1, keepdims=True)
+        mean = torch.sum(x_masked, dim=1, keepdim=True) / N
+
+        # Applying random rotation
+        # if training and self.data_augmentation:
+        #     x = utils.random_rotation(x)
+
+        return self.edm.forward(
+            x=x,
+            h=h,
+            x_batch_new=x_batch_new,
+            h_batch_new=h_batch_new,
+            node_mask_batch_new=node_mask_batch_new,
+            scaffold_mask_batch_new=scaffold_mask_batch_new,
+            scaffold_mask_ori_batch_new=scaffold_mask_ori_batch_new,
+            rgroup_mask=rgroup_mask,
+            rgroup_mask_batch_new=rgroup_mask_batch_new,
+            rgroup_mask_ori_batch_new=rgroup_mask_ori_batch_new,
+            edge_mask=edge_mask,
+            context=context, 
+            center_of_mass_mask=center_of_mass_mask, 
+            batch_new_len_tensor=batch_new_len_tensor,
+        )
+
     def training_step(self, data, *args):
         delta_log_px, kl_prior, loss_term_t, loss_term_0, l2_loss, noise_t, noise_0 = self.forward(data, training=True)
         vlb_loss = kl_prior + loss_term_t + loss_term_0 - delta_log_px

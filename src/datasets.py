@@ -455,8 +455,8 @@ class MultiRDataset(Dataset):
                 if atom_type == 'H':
                     continue
                 pocket_pos.append(pos)
-                pocket_one_hot.append(get_one_hot(atom_type, const.GEOM_ATOM2IDX))
-                pocket_charges.append(const.GEOM_CHARGES[atom_type])
+                pocket_one_hot.append(get_one_hot(atom_type, const.ATOM2IDX))
+                pocket_charges.append(const.CHARGES[atom_type])
             pocket_one_hot = np.array(pocket_one_hot)
             pocket_charges = np.array(pocket_charges)
             pocket_pos = np.array(pocket_pos)
@@ -565,7 +565,10 @@ class MultiRDataset_anchor(Dataset):
             anchor_id_list = row['anchor'].split('|')
             scaf_pos, scaf_one_hot, scaf_charges = parse_molecule(scaffold)
             fake_pos_list = [list(scaf_pos[int(anchor_id)]) for anchor_id in anchor_id_list]
-            rgroup_pos, rgroup_one_hot, rgroup_charges = parse_rgroup(rgroup, fake_pos_list)
+            try:
+                rgroup_pos, rgroup_one_hot, rgroup_charges = parse_rgroup(rgroup, fake_pos_list)
+            except:
+                continue
             # rgroup_pos, rgroup_one_hot, rgroup_charges, rgroup_atom_num_list = parse_rgroup_multian(rgroup)
             rgroup_size_str = '10' # str(rgroup_atom_num_list[0])
             for r_i in range(1, len(anchor_id_list)):
@@ -580,8 +583,8 @@ class MultiRDataset_anchor(Dataset):
                 if atom_type == 'H':
                     continue
                 pocket_pos.append(pos)
-                pocket_one_hot.append(get_one_hot(atom_type, const.GEOM_ATOM2IDX))
-                pocket_charges.append(const.GEOM_CHARGES[atom_type])
+                pocket_one_hot.append(get_one_hot(atom_type, const.ATOM2IDX))
+                pocket_charges.append(const.CHARGES[atom_type])
             pocket_one_hot = np.array(pocket_one_hot)
             pocket_charges = np.array(pocket_charges)
             pocket_pos = np.array(pocket_pos)
@@ -715,8 +718,8 @@ def collate_mr(batch):
     out['batch_new_len_tensor'] = batch_new_len_tensor
 
     rgroup_idx = torch.nonzero(rgroup_mask)
-    start_idx = [i for i in range(0, anchors_.shape[0] * 10, 10)] # fake atom
-    # start_idx = [0]
+    # start_idx = [i for i in range(0, anchors_.shape[0] * 10, 10)] # fake atom
+    start_idx = [0]
     for i in range(len(rgroup_size_list)):
         for j in range(len(rgroup_size_list[i])):
             start_idx.append(start_idx[-1] + rgroup_size_list[i][j])

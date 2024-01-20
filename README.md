@@ -1,9 +1,7 @@
-# DiffDec: Structure-Aware Scaffold Decoration with an End-to-end Diffusion Model
+# DiffDec: Structure-Aware Scaffold Decoration with an End-to-End Diffusion Model
 
 ## Summary
 DiffDec is an end-to-end E(3)-equivariant diffusion model to optimize molecules through molecular scaffold decoration conditioned on the 3D protein pocket. 
-
-This is a preliminary version of our code. We are currently in the process of cleaning up and organizing the code and will release it here as soon as possible.
 
 <p align='center'>
 <img src="./assets/overview.jpg" alt="architecture"/> 
@@ -16,6 +14,16 @@ conda env create -f environment.yaml
 
 ## Datasets
 Please refer to [`README.md`](./data/README.md) in the `data` folder.
+
+## Training
+To train a model for single R-group decoration task, run:
+```bash
+python train_single.py --config configs/single.yml
+```
+To train a model for multi R-groups decoration task, run:
+```bash
+python train_multi.py --config configs/multi.yml
+```
 
 ## Sampling
 You can sample 100 decorated compounds for each input scaffold and protein pocket and change the corresponding parameters in the script. Run the following:

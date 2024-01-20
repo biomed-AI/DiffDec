@@ -237,9 +237,9 @@ def process_sdf(scaf_dataset):
     scaf_dataset = torch.load(scaf_dataset)
 
     for i in range(len(scaf_dataset['scaf_smi'])):
-        ligand_filename = os.path.join('/home/xiejunjie/project/flag/data/crossdocked_pocket10',
+        ligand_filename = os.path.join('data/crossdocked_pocket10',
                             scaf_dataset['ligand_filename'][i])
-        protein_filename = os.path.join('/home/xiejunjie/project/flag/data/crossdocked_pocket10',
+        protein_filename = os.path.join('data/crossdocked_pocket10',
                             scaf_dataset['protein_filename'][i])
         scaf_smi = scaf_dataset['scaf_smi'][i]
         rgroup_smi_list = scaf_dataset['rgroup_smi'][i]

@@ -133,6 +133,125 @@ class DDPM(pl.LightningModule):
     def test_dataloader(self, collate_fn=collate):
         return get_dataloader(self.test_dataset, self.batch_size, collate_fn=collate_fn)
 
+    def forward(self, data, training):
+        x = data['positions']
+        h = data['one_hot']
+        node_mask = data['atom_mask']
+        edge_mask = data['edge_mask']
+        anchors = data['anchors']
+        scaffold_mask = data['scaffold_mask']
+        rgroup_mask = data['rgroup_mask']
+
+        # Anchors and scaffolds labels are used as context
+        if self.anchors_context:
+            context = torch.cat([anchors, scaffold_mask], dim=-1)
+        else:
+            context = scaffold_mask
+
+        # Add information about pocket to the context
+        scaffold_pocket_mask = scaffold_mask
+        scaffold_only_mask = data['scaffold_only_mask']
+        pocket_only_mask = scaffold_pocket_mask - scaffold_only_mask
+        if self.anchors_context:
+            context = torch.cat([anchors, scaffold_only_mask, pocket_only_mask], dim=-1)
+        else:
+            context = torch.cat([scaffold_only_mask, pocket_only_mask], dim=-1)
+
+        # Removing COM of scaffold from the atom coordinates
+        if self.center_of_mass == 'scaffold':
+            center_of_mass_mask = data['scaffold_only_mask']
+        elif self.center_of_mass == 'scaffold':
+            center_of_mass_mask = scaffold_mask
+        elif self.center_of_mass == 'anchors':
+            center_of_mass_mask = anchors
+        else:
+            raise NotImplementedError(self.center_of_mass)
+        x = utils.remove_partial_mean_with_mask(x, node_mask, center_of_mass_mask)
+        utils.assert_partial_mean_zero_with_mask(x, node_mask, center_of_mass_mask)
+
+        # Applying random rotation
+        if training and self.data_augmentation:
+            x = utils.random_rotation(x)
+
+        return self.edm.forward(
+            x=x,
+            h=h,
+            node_mask=node_mask,
+            scaffold_mask=scaffold_mask,
+            rgroup_mask=rgroup_mask,
+            edge_mask=edge_mask,
+            context=context
+        )
+
+    def training_step(self, data, *args):
+        delta_log_px, kl_prior, loss_term_t, loss_term_0, l2_loss, noise_t, noise_0 = self.forward(data, training=True)
+        vlb_loss = kl_prior + loss_term_t + loss_term_0 - delta_log_px
+        if self.loss_type == 'l2':
+            loss = l2_loss
+        elif self.loss_type == 'vlb':
+            loss = vlb_loss
+        else:
+            raise NotImplementedError(self.loss_type)
+
+        training_metrics = {
+            'loss': loss,
+            'delta_log_px': delta_log_px,
+            'kl_prior': kl_prior,
+            'loss_term_t': loss_term_t,
+            'loss_term_0': loss_term_0,
+            'l2_loss': l2_loss,
+            'vlb_loss': vlb_loss,
+            'noise_t': noise_t,
+            'noise_0': noise_0
+        }
+        if self.log_iterations is not None and self.global_step % self.log_iterations == 0:
+            for metric_name, metric in training_metrics.items():
+                self.metrics.setdefault(f'{metric_name}/train', []).append(metric)
+                self.log(f'{metric_name}/train', metric, prog_bar=True)
+        return training_metrics
+
+    def validation_step(self, data, *args):
+        delta_log_px, kl_prior, loss_term_t, loss_term_0, l2_loss, noise_t, noise_0 = self.forward(data, training=False)
+        vlb_loss = kl_prior + loss_term_t + loss_term_0 - delta_log_px
+        if self.loss_type == 'l2':
+            loss = l2_loss
+        elif self.loss_type == 'vlb':
+            loss = vlb_loss
+        else:
+            raise NotImplementedError(self.loss_type)
+        return {
+            'loss': loss,
+            'delta_log_px': delta_log_px,
+            'kl_prior': kl_prior,
+            'loss_term_t': loss_term_t,
+            'loss_term_0': loss_term_0,
+            'l2_loss': l2_loss,
+            'vlb_loss': vlb_loss,
+            'noise_t': noise_t,
+            'noise_0': noise_0
+        }
+
+    def test_step(self, data, *args):
+        delta_log_px, kl_prior, loss_term_t, loss_term_0, l2_loss, noise_t, noise_0 = self.forward(data, training=False)
+        vlb_loss = kl_prior + loss_term_t + loss_term_0 - delta_log_px
+        if self.loss_type == 'l2':
+            loss = l2_loss
+        elif self.loss_type == 'vlb':
+            loss = vlb_loss
+        else:
+            raise NotImplementedError(self.loss_type)
+        return {
+            'loss': loss,
+            'delta_log_px': delta_log_px,
+            'kl_prior': kl_prior,
+            'loss_term_t': loss_term_t,
+            'loss_term_0': loss_term_0,
+            'l2_loss': l2_loss,
+            'vlb_loss': vlb_loss,
+            'noise_t': noise_t,
+            'noise_0': noise_0
+        }
+
     def training_epoch_end(self, training_step_outputs):
         for metric in training_step_outputs[0].keys():
             avg_metric = self.aggregate_metric(training_step_outputs, metric)

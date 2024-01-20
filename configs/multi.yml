@@ -1,7 +1,7 @@
 exp_name: 'diffdec_multi'
-data: data/pocket/mr_sim_multianchors
-train_data_prefix: crossdock_train.full
-val_data_prefix: crossdock_test.full
+data: data/multi
+train_data_prefix: crossdockmulti_train.full
+val_data_prefix: crossdockmulti_test.full
 checkpoints: models
 logs: logs
 device: gpu

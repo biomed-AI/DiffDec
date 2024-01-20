@@ -35,6 +35,124 @@ class EDM(torch.nn.Module):
         self.norm_values = norm_values
         self.norm_biases = norm_biases
 
+    def forward(self, x, h, x_batch_new, h_batch_new, node_mask_batch_new, scaffold_mask_batch_new, 
+                scaffold_mask_ori_batch_new, rgroup_mask, rgroup_mask_batch_new, rgroup_mask_ori_batch_new, 
+                edge_mask, context, center_of_mass_mask, batch_new_len_tensor):
+
+        x_batch_new = utils.remove_partial_mean_with_mask(x_batch_new, node_mask_batch_new, center_of_mass_mask)
+        utils.assert_partial_mean_zero_with_mask(x_batch_new, node_mask_batch_new, center_of_mass_mask)
+
+        # ori start
+        # Normalization and concatenation
+        # x, h = self.normalize(x, h)
+        # xh = torch.cat([x, h], dim=2)
+
+        # Volume change loss term
+        delta_log_px = self.delta_log_px(rgroup_mask).mean()
+
+        # Sample t
+        t_int = torch.randint(0, self.T + 1, size=(x.size(0), 1), device=x.device).float()
+        s_int = t_int - 1
+        t = t_int / self.T
+        s = s_int / self.T
+
+        # Masks for t=0 and t>0
+        t_is_zero = (t_int == 0).squeeze().float()
+        t_is_not_zero = 1 - t_is_zero
+
+        # Compute gamma_t and gamma_s according to the noise schedule
+        gamma_t = self.inflate_batch_array(self.gamma(t), x)
+        gamma_s = self.inflate_batch_array(self.gamma(s), x)
+
+        # Compute alpha_t and sigma_t from gamma
+        alpha_t = self.alpha(gamma_t, x)
+        sigma_t = self.sigma(gamma_t, x)
+
+        # Sample noise
+        # Note: only for rgroup
+        eps_t = self.sample_combined_position_feature_noise(n_samples=x.size(0), n_nodes=x.size(1), mask=rgroup_mask)
+
+        eps_t_batch_new = torch.repeat_interleave(eps_t, batch_new_len_tensor, dim=0).to(rgroup_mask.device)
+
+        x_batch_new, h_batch_new = self.normalize(x_batch_new, h_batch_new)
+        xh_batch_new = torch.cat([x_batch_new, h_batch_new], dim=2)
+
+
+        # Sample z_t given x, h for timestep t, from q(z_t | x, h)
+        # Note: keep scaffold unchanged
+        # z_t = alpha_t * xh + sigma_t * eps_t
+        # z_t = xh * scaffold_mask + z_t * rgroup_mask
+
+        alpha_t_batch_new = torch.repeat_interleave(alpha_t, batch_new_len_tensor, dim=0).to(rgroup_mask.device)
+        sigma_t_batch_new = torch.repeat_interleave(sigma_t, batch_new_len_tensor, dim=0).to(rgroup_mask.device)
+        t_batch_new = torch.repeat_interleave(t, batch_new_len_tensor, dim=0).to(rgroup_mask.device)
+        gamma_t_batch_new = torch.repeat_interleave(gamma_t, batch_new_len_tensor, dim=0).to(rgroup_mask.device)
+        gamma_s_batch_new = torch.repeat_interleave(gamma_s, batch_new_len_tensor, dim=0).to(rgroup_mask.device)
+        if len(t_is_zero.shape) != 0:
+            t_is_zero_batch_new = torch.repeat_interleave(t_is_zero, batch_new_len_tensor, dim=0).to(rgroup_mask.device)
+        else:
+            t_is_zero_batch_new = t_is_zero
+        if len(t_is_not_zero.shape) != 0:
+            t_is_not_zero_batch_new = torch.repeat_interleave(t_is_not_zero, batch_new_len_tensor, dim=0).to(rgroup_mask.device)
+        else:
+            t_is_not_zero_batch_new = t_is_not_zero
+
+        z_t = alpha_t_batch_new * xh_batch_new + sigma_t_batch_new * eps_t_batch_new
+        z_t = xh_batch_new * scaffold_mask_ori_batch_new + z_t * rgroup_mask_ori_batch_new
+
+        # Neural net prediction
+        eps_t_hat = self.dynamics.forward(
+            xh=z_t,
+            t=t_batch_new,
+            node_mask=node_mask_batch_new,
+            rgroup_mask=rgroup_mask_batch_new,
+            context=context,
+            edge_mask=edge_mask,
+        )
+
+        eps_t_hat = eps_t_hat * rgroup_mask_batch_new
+
+        eps_t_batch_new = eps_t_batch_new * rgroup_mask_batch_new
+
+        # Computing basic error (further used for computing NLL and L2-loss)
+        error_t = self.sum_except_batch((eps_t_batch_new - eps_t_hat) ** 2)
+
+        # Computing L2-loss for t>0
+        normalization = (self.n_dims + self.in_node_nf) * self.numbers_of_nodes(rgroup_mask_batch_new)
+        l2_loss = error_t / normalization
+        l2_loss = l2_loss.mean()
+
+        # The KL between q(z_T | x) and p(z_T) = Normal(0, 1) (should be close to zero)
+        kl_prior = self.kl_prior(xh_batch_new, rgroup_mask_batch_new).mean()
+
+        # Computing NLL middle term
+        SNR_weight = (self.SNR(gamma_s_batch_new - gamma_t_batch_new) - 1).squeeze(1).squeeze(1)
+        loss_term_t = self.T * 0.5 * SNR_weight * error_t
+        loss_term_t = (loss_term_t * t_is_not_zero_batch_new).sum() / t_is_not_zero_batch_new.sum()
+
+        # Computing noise returned by dynamics
+        noise = torch.norm(eps_t_hat, dim=[1, 2])
+        noise_t = (noise * t_is_not_zero_batch_new).sum() / t_is_not_zero_batch_new.sum()
+
+        if t_is_zero_batch_new.sum() > 0:
+            # The _constants_ depending on sigma_0 from the
+            # cross entropy term E_q(z0 | x) [log p(x | z0)]
+            neg_log_constants = -self.log_constant_of_p_x_given_z0(x_batch_new, rgroup_mask_batch_new)
+
+            # Computes the L_0 term (even if gamma_t is not actually gamma_0)
+            # and selected only relevant via masking
+            loss_term_0 = -self.log_p_xh_given_z0_without_constants(h_batch_new, z_t, gamma_t_batch_new, eps_t_batch_new, eps_t_hat, rgroup_mask_batch_new)
+            loss_term_0 = loss_term_0 + neg_log_constants
+            loss_term_0 = (loss_term_0 * t_is_zero_batch_new).sum() / t_is_zero_batch_new.sum()
+
+            # Computing noise returned by dynamics
+            noise_0 = (noise * t_is_zero_batch_new).sum() / t_is_zero_batch_new.sum()
+        else:
+            loss_term_0 = 0.
+            noise_0 = 0.
+
+        return delta_log_px, kl_prior, loss_term_t, loss_term_0, l2_loss, noise_t, noise_0
+
     @torch.no_grad()
     def sample_chain(self, x, h, node_mask, scaffold_mask, rgroup_mask, edge_mask, context, keep_frames=None):
         n_samples = x.size(0)

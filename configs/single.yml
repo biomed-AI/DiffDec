@@ -1,7 +1,7 @@
 exp_name: 'diffdec_single'
-data: /data/single
-train_data_prefix: crossdock_train.full
-val_data_prefix: crossdock_test.full
+data: data/single
+train_data_prefix: crossdocksingle_train.full
+val_data_prefix: crossdocksingle_test.full
 checkpoints: models
 logs: logs
 device: gpu
@@ -26,7 +26,7 @@ inv_sublayers: 2
 include_charges: False
 diffusion_loss_type: l2
 data_augmentation: False
-center_of_mass: anchors
+center_of_mass: anchors # [scaffold, anchors]
 # remove_anchors_context: True
 
 sin_embedding: False
