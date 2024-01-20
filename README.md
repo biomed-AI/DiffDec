@@ -26,7 +26,7 @@ python train_multi.py --config configs/multi.yml
 ```
 
 ## Sampling
-You can sample 100 decorated compounds for each input scaffold and protein pocket and change the corresponding parameters in the script. You also can download the model checkpoint file from [this link](https://zenodo.org/records/10527451) and save it into `ckpt/`. Run the following:
+You can sample 100 decorated compounds for each input scaffold and protein pocket and change the corresponding parameters in the script. You can also download the model checkpoint file from [this link](https://zenodo.org/records/10527451) and save it into `ckpt/`. Run the following:
 ```bash
 bash sample.sh
 ```
