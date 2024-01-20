@@ -1,6 +1,6 @@
 # Datasets
 
-To train the model from scratch, you need to download the preprocessed file from [this link]() and save it into `data/single` or `data/multi`.
+To train the model from scratch, you need to download the preprocessed file from [this link](https://zenodo.org/records/10527451) and save it into `data/single` or `data/multi`.
 
 We use the CrossDocked dataset and reaction-based slicing method in LibINVENT to construct single and multi R-groups datasets. If you want to process the dataset from scratch, you can follow the steps:
 
