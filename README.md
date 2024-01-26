@@ -37,3 +37,10 @@ You can run evaluation scripts after sampling decorated molecules:
 ```bash
 bash evaluate.sh
 ```
+
+## Sampling for a specific protein pocket and a specific scaffold
+To generate R-groups for your own pocket and scaffold, you need to provide the pdb structure file of the protein pocket, the sdf file of the scaffold, and the scaffold's smiles with anchor(s).
+For Example:
+```bash
+CUDA_VISIBLE_DEVICES=0 python sample_single_for_specific_context.py --scaffold_smiles_file ./data/examples/scaf.smi --protein_file ./data/examples/protein.pdb --scaffold_file ./data/examples/scaf.sdf --task_name exp --data_dir ./data/examples --checkpoint ./ckpt/diffdec_single.ckpt --samples_dir samples_exp --n_samples 1 --device cuda:0
+```
