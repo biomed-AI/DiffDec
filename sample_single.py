@@ -23,8 +23,6 @@ parser.add_argument('--device', action='store', type=str, required=True)
 parser.add_argument('--rgroup_size_model', action='store', type=str, required=False, default=None)
 args = parser.parse_args()
 
-is_fa = 'fa' in args.checkpoint
-
 experiment_name = args.checkpoint.split('/')[-1].replace('.ckpt', '')
 
 output_dir = os.path.join(args.samples, experiment_name)
@@ -131,22 +129,13 @@ for batch_idx, data in enumerate(dataloader):
     node_mask = data['atom_mask'] - data['pocket_mask']
     scaf_mask = data['scaffold_only_mask']
     pock_mask = data['pocket_mask']
-    if is_fa:
-        save_xyz_file_fa(output_dir, h, x, pock_mask, pock_names)
-    else:
-        save_xyz_file(output_dir, h, x, pock_mask, pock_names)
+    save_xyz_file_fa(output_dir, h, x, pock_mask, pock_names)
 
     # Saving ground-truth molecules
-    if is_fa:
-        save_xyz_file_fa(output_dir, h, x, node_mask, true_names)
-    else:
-        save_xyz_file(output_dir, h, x, node_mask, true_names)
+    save_xyz_file_fa(output_dir, h, x, node_mask, true_names)
 
     # Saving scaffold
-    if is_fa:
-        save_xyz_file_fa(output_dir, h, x, scaf_mask, scaf_names)
-    else:
-        save_xyz_file(output_dir, h, x, scaf_mask, scaf_names)
+    save_xyz_file_fa(output_dir, h, x, scaf_mask, scaf_names)
 
     # Sampling and saving generated molecules
     for i in tqdm(range(starting_point, args.n_samples), desc=str(batch_idx)):
@@ -159,10 +148,8 @@ for batch_idx, data in enumerate(dataloader):
         node_mask = data['atom_mask'] - data['pocket_mask']
 
         pred_names = [f'{uuid}/{i}' for uuid in uuids]
-        if is_fa:
-            save_xyz_file_fa(output_dir, h, x, node_mask, pred_names)
-        else:
-            save_xyz_file(output_dir, h, x, node_mask, pred_names)
+        
+        save_xyz_file_fa(output_dir, h, x, node_mask, pred_names)
         for j in range(len(pred_names)):
             out_xyz = f'{output_dir}/{pred_names[j]}_.xyz'
             out_sdf = f'{output_dir}/{pred_names[j]}_.sdf'

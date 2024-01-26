@@ -1,3 +1,7 @@
 logs
 models
 ckpt
+samples*
+formatted*
+data/examples
+sample_for*
